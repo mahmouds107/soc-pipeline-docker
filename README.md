@@ -22,7 +22,7 @@ A detailed log of every major error I encountered and the professional methods I
 
 The final, fully working `docker-compose.yml` (the **Golden Blueprint**) for this entire SOC stack is available here:
 
- [SOC Pipeline Docker Repository](https://github.com/mahmoud107/soc-pipeline-docker)
+ [SOC Pipeline Docker Repository](https://github.com/mahmouds107/soc-pipeline-docker/blob/main/docker-compose.yml)
 ---
 
 ## 💡 Highlights
