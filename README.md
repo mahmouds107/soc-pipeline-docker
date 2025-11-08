@@ -1,4 +1,4 @@
-🚀 My Professional SOC Portfolio & Debugging Journal
+##🚀 My Professional SOC Portfolio & Debugging Journal
 
 Welcome! This repository is the story of my hands-on project building a modern, automated Security Operations Center (SOC) stack from scratch.
 
