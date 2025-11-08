@@ -1,0 +1,120 @@
+# =============================================================
+# ===     المخطط الهندسي الذهبي (Shuffle + TheHive) - الإصدار النهائي     ===
+# =============================================================
+#
+# الوصف:
+#   هذا المخطط يقوم بتشغيل "نواة" مركز عمليات أمنية (SOC) كاملة باستخدام Docker.
+#   يتضمن:
+#     - Shuffle (SOAR): للتشغيل الآلي والاستجابة.
+#     - TheHive (IMS): لإدارة الحوادث والقضايا.
+#
+# تم إصلاح جميع المشاكل الشائعة:
+#   1. (RAM): تم ضبط حدود الذاكرة (RAM) لـ OpenSearch و ScyllaDB لتعمل على 8GB.
+#   2. (Security): تم تعطيل إضافة الأمان لـ OpenSearch 2.12+ (DISABLE_SECURITY_PLUGIN=true).
+#   3. (HTTP/HTTPS): تم إجبار Shuffle-backend على استخدام HTTP (SHUFFLE_OPENSEARCH_URL).
+#   4. (Worker): تم حذف خدمة "worker" الزائدة والاعتماد على "backend" للقيام بالعمل.
+#
+version: '3.7'
+
+services:
+  # --- 1. جناح Shuffle (مُصلح بالكامل) ---
+  frontend:
+    image: ghcr.io/shuffle/shuffle-frontend:latest
+    container_name: shuffle-frontend
+    hostname: shuffle-frontend
+    ports:
+      - "3001:80"
+      - "3002:443"
+    networks:
+      - shuffle_soc_net
+    environment:
+      BACKEND_HOSTNAME: shuffle-backend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  backend:
+    image: ghcr.io/shuffle/shuffle-backend:latest
+    container_name: shuffle-backend
+    hostname: shuffle-backend
+    restart: unless-stopped
+    environment:
+      # (تنسيق Key:Value الصحيح)
+      SHUFFLE_DB_LOCATION: /data/shuffle.db
+      SHUFFLE_APP_SDK_VERSION: 1.1.3
+      SHUFFLE_ORGB_ID: shuffle
+      SHUFFLE_WORKER_ID: shuffle-backend # <-- (إصلاح "Orborus" - العقل هو العامل)
+      SHUFFLE_PASS: Th1s1sSup3rS3cr3t # <-- (يمكنك تغيير هذا)
+      SHUFFLE_OPENSEARCH_URL: http://shuffle-opensearch:9200 # <-- (إصلاح HTTP)
+    volumes:
+      - shuffle-database:/data
+      - /var/run/docker.sock:/var/run/docker.sock # <-- (إصلاح "تفعيل التطبيق" - docker.sock)
+    networks:
+      - shuffle_soc_net
+    depends_on:
+      - opensearch
+
+  opensearch: # <-- (قاعدة بيانات Shuffle)
+    image: opensearchproject/opensearch:2.12.0
+    container_name: shuffle-opensearch
+    restart: unless-stopped
+    environment:
+      - "discovery.type=single-node"
+      - "DISABLE_SECURITY_PLUGIN=true" # <-- (إصلاح الأمان)
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m" # <-- (إصلاح الـ RAM)
+    volumes:
+      - shuffle-opensearch-data:/usr/share/opensearch/data
+    networks:
+      - shuffle_soc_net
+
+  # --- 2. جناح TheHive (مُصلح بالكامل) ---
+  thehive:
+    image: strangebee/thehive:5.3.0
+    container_name: thehive_app
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    networks:
+      - shuffle_soc_net
+    volumes:
+      - thehive_data:/etc/thehive
+    depends_on:
+      - thehive_opensearch
+      - thehive_scylladb
+
+  thehive_opensearch: # <-- (قاعدة بيانات TheHive)
+    image: opensearchproject/opensearch:2.12.0
+    container_name: thehive_opensearch
+    restart: unless-stopped
+    environment:
+      - "discovery.type=single-node"
+      - "DISABLE_SECURITY_PLUGIN=true" # <-- (إصلاح الأمان)
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" # <-- (إصلاح الـ RAM)
+    volumes:
+      - thehive_opensearch_data:/usr/share/opensearch/data
+    networks:
+      - shuffle_soc_net
+
+  thehive_scylladb:
+    image: scylladb/scylla:5.4
+    container_name: thehive_scylladb
+    restart: unless-stopped
+    command: --smp 1 --memory 750M --overprovisioned 1 # <-- (إصلاح الـ RAM)
+    volumes:
+      - thehive_scylla_data:/var/lib/scylla
+    networks:
+      - shuffle_soc_net
+
+# =============================================================
+# ===             تعريفات المخازن والشبكة (موحدة)            ===
+# =============================================================
+volumes:
+  shuffle-database:
+  shuffle-opensearch-data:
+  thehive_data:
+  thehive_opensearch_data:
+  thehive_scylla_data:
+
+networks:
+  shuffle_soc_net: # <-- (شبكة موحدة واحدة)
+    driver: bridge
